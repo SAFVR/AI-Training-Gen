@@ -1,0 +1,42 @@
+.env
+.env.test
+
+# Temporary files
+temp/
+
+# Logs
+logs/
+*.log
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# FFmpeg binaries - excluded from Git due to size
+bin/ffmpeg-master-latest-win64-gpl/bin/ffmpeg.exe
+bin/ffmpeg-master-latest-win64-gpl/bin/ffplay.exe
+bin/ffmpeg-master-latest-win64-gpl/bin/ffprobe.exe
+bin/ffmpeg.exe
+
+# AWS credentials
+video-app-user_accessKeys.csv
+*.accessKeys.csv
