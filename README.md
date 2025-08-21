@@ -57,6 +57,15 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+Edit the `.env` file and add your API keys and configuration. Make sure to set up all required services:
+
+- LiteLLM for AI text generation
+- BytePulse for video generation
+- ElevenLabs for audio narration
+- Azure AI for image generation
+- Creatomate for video processing with captions
+- AWS S3 for video storage
+
 5. FFmpeg Setup
 
 This project requires FFmpeg executables which are not included in the Git repository due to their large file size. You'll need to download and set them up manually:
@@ -84,7 +93,30 @@ The required files are:
 
 Alternatively, you can download these files from our shared storage location (contact team lead for access).
 
-Edit the `.env` file and add your API keys and configuration.
+## Creatomate Setup
+
+1. Sign up for a Creatomate account at [https://creatomate.com](https://creatomate.com)
+2. Create a new template for video captions or use an existing one
+3. Get your API key from the Creatomate dashboard
+4. Add your API key and template ID to the `.env` file:
+   ```
+   CREATOMATE_API_KEY=your_creatomate_api_key
+   CREATOMATE_TEMPLATE_ID=your_creatomate_template_id
+   ```
+
+## AWS S3 Setup
+
+1. Create an AWS account if you don't have one
+2. Create an S3 bucket for storing videos
+3. Create an IAM user with programmatic access and S3 permissions
+4. Add your AWS credentials to the `.env` file:
+   ```
+   AWS_ACCESS_KEY_ID=your_aws_access_key_id
+   AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key
+   AWS_REGION=your_aws_region
+   AWS_S3_BUCKET=your_s3_bucket_name
+   ```
+5. Make sure your S3 bucket has the appropriate CORS configuration for video access
 
 ## Usage
 
@@ -96,7 +128,11 @@ python main.py
 
 2. The API will be available at `http://localhost:8000`
 
-3. Use the `/api/generate_video` endpoint with a POST request containing the required job information:
+3. Available endpoints:
+
+### Generate Video
+
+Use the `/api/generate_video` endpoint with a POST request containing the required job information:
 
 ```json
 {
@@ -108,6 +144,28 @@ python main.py
   "video_type": "video"
 }
 ```
+
+The response will include:
+- `video_url`: Local URL of the generated video
+- `s3_video_url`: S3 URL of the uploaded video
+- `creatomate_video_url`: URL of the video processed by Creatomate with captions
+
+### Upload Video
+
+Use the `/api/upload_video` endpoint to upload an existing video for S3 storage and Creatomate processing:
+
+```
+POST /api/upload_video
+Content-Type: multipart/form-data
+
+title: Video Title
+description: Video Description (optional)
+video_file: [binary file data]
+```
+
+The response will include:
+- `original_video_url`: S3 URL of the uploaded video
+- `creatomate_video_url`: URL of the video processed by Creatomate with captions
 
 ## API Documentation
 

@@ -18,7 +18,7 @@ from app.services.creatomate_service import creatomate_service
 async def test_s3_creatomate_integration():
     try:
         # Test video path (replace with your actual video path)
-        video_path = "video/Chemical_plant_Operator_20250821_150723.mp4"
+        video_path = "video/Chemical_plant_Operator_20250821_173642.mp4"
         
         # Check if file exists
         if not os.path.exists(video_path):

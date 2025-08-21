@@ -12,6 +12,7 @@ from app.services.elevenlabs_service import elevenlabs_service
 from app.services.azure_ai_service import azure_ai_service
 from app.services.media_merge_service import media_merge_service
 from app.services.creatomate_service import creatomate_service
+from app.services.s3_service import s3_service
 
 class VideoGenerationService:
     async def generate_video(self, request: VideoGenerationRequest) -> VideoGenerationResponse:
@@ -90,20 +91,28 @@ class VideoGenerationService:
             output_path = f"video/{output_filename}"
             final_video_path = await media_merge_service.merge_media(video_paths, audio_paths, subtitles, output_path)
             
-            # Step 7: Send to Creatomate for caption generation
-            logger.info("Sending video to Creatomate for caption generation")
+            # Step 7: Upload merged video to S3
+            logger.info("Uploading merged video to S3")
+            s3_video_url = await s3_service.upload_file(final_video_path)
+            if not s3_video_url:
+                logger.warning("Failed to upload video to S3, continuing with local video path")
+                s3_video_url = f"/video/{output_filename}"
+            else:
+                logger.info(f"Successfully uploaded video to S3: {s3_video_url}")
+            
+            # Step 8: Send to Creatomate for caption generation using S3 URL
+            logger.info("Sending S3 video URL to Creatomate for caption generation")
             creatomate_video_url = None
             try:
-                # Call Creatomate API to process the video with captions
-                # This will upload to S3 and send the S3 URL to Creatomate
-                creatomate_video_url = await self._send_to_creatomate(final_video_path)
+                # Call Creatomate API to process the video with captions using the S3 URL
+                creatomate_video_url = await creatomate_service.process_video_with_template(final_video_path, s3_video_url)
                 logger.info(f"Successfully processed video with Creatomate: {creatomate_video_url}")
             except Exception as e:
                 logger.error(f"Error processing video with Creatomate: {str(e)}")
                 # Continue with the original video if Creatomate processing fails
                 logger.info("Continuing with the original merged video")
             
-            # Step 8: Clean up temporary files
+            # Step 9: Clean up temporary files
             logger.info(f"Cleaning up temporary files in {temp_dir}")
             try:
                 self._cleanup_temp_files(temp_dir)
@@ -111,7 +120,7 @@ class VideoGenerationService:
             except Exception as e:
                 logger.error(f"Error cleaning up temporary files: {str(e)}")
             
-            # Step 9: Create response
+            # Step 10: Create response
             video_url = f"/video/{output_filename}"
             
             # Calculate approximate duration (10 seconds per clip)
@@ -119,6 +128,7 @@ class VideoGenerationService:
             
             response = VideoGenerationResponse(
                 video_url=video_url,
+                s3_video_url=s3_video_url,
                 creatomate_video_url=creatomate_video_url,
                 job_title=request.job_title,
                 course_title=course_outline["title"],
@@ -137,27 +147,7 @@ class VideoGenerationService:
             logger.error(f"Error generating video: {error_message}")
             raise Exception(error_message)
 
-    async def _send_to_creatomate(self, video_path: str) -> str:
-        """Send the video to Creatomate for caption generation and return the processed video URL"""
-        try:
-            # Upload the video to S3 first
-            s3_video_url = await s3_service.upload_file(video_path)
-            if not s3_video_url:
-                logger.error("Failed to upload video to S3")
-                return video_path
-                
-            logger.info(f"Video uploaded to S3: {s3_video_url}")
-            
-            # Call Creatomate API with the template ID and S3 video URL
-            # This will process the video with the template and return the Creatomate video URL
-            creatomate_video_url = await creatomate_service.process_video_with_template(video_path, s3_video_url)
-            
-            logger.info(f"Video processed by Creatomate: {creatomate_video_url}")
-            return creatomate_video_url
-        except Exception as e:
-            logger.error(f"Error sending video to Creatomate: {str(e)}")
-            # Return the original video path if Creatomate processing fails
-            return video_path
+    # The _send_to_creatomate method has been removed as we now directly call creatomate_service in the main workflow
     
     def _cleanup_temp_files(self, temp_dir: str) -> None:
         """Clean up temporary files after video generation"""

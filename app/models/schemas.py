@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from enum import Enum
+import datetime
 
 class VideoType(str, Enum):
     IMAGE = "image"
@@ -33,7 +34,8 @@ class RiskAnalysis(BaseModel):
     mitigation_strategies: List[str] = Field(..., description="Strategies to mitigate identified risks")
 
 class VideoGenerationResponse(BaseModel):
-    video_url: str = Field(..., description="URL of the generated video")
+    video_url: str = Field(..., description="Local URL of the generated video")
+    s3_video_url: Optional[str] = Field(None, description="S3 URL of the uploaded video")
     creatomate_video_url: Optional[str] = Field(None, description="URL of the video processed by Creatomate")
     job_title: str = Field(..., description="Title of the job")
     course_title: str = Field(..., description="Title of the generated course")
@@ -41,3 +43,14 @@ class VideoGenerationResponse(BaseModel):
     clip_count: int = Field(..., description="Number of clips in the video")
     video_type: VideoType = Field(..., description="Type of video generated (image or video)")
     created_at: str = Field(..., description="Timestamp of video creation")
+
+class VideoUploadRequest(BaseModel):
+    title: str = Field(..., description="Title for the uploaded video")
+    description: Optional[str] = Field(None, description="Description of the video content")
+
+class VideoUploadResponse(BaseModel):
+    original_video_url: str = Field(..., description="URL of the uploaded video in S3")
+    creatomate_video_url: str = Field(..., description="URL of the video processed by Creatomate")
+    title: str = Field(..., description="Title of the video")
+    description: Optional[str] = Field(None, description="Description of the video")
+    created_at: str = Field(..., description="Timestamp of video upload")
