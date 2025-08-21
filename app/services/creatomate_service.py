@@ -289,10 +289,13 @@ class CreatomateService:
                     logger.debug(f"Render status: {status_result}")
                     
                     # Check if render is complete
-                    if isinstance(status_result, dict) and status_result.get('status') == 'completed':
+                    if isinstance(status_result, dict) and (status_result.get('status') == 'completed' or status_result.get('status') == 'succeeded'):
                         render_complete = True
                         processed_video_url = status_result.get('url')
                         logger.info(f"Render completed, URL: {processed_video_url}")
+                        # Return immediately when render is complete
+                        logger.info(f"Video processed with Creatomate template, URL: {processed_video_url}")
+                        return processed_video_url
                     elif isinstance(status_result, dict) and status_result.get('status') == 'failed':
                         error_message = status_result.get('error_message', status_result.get('error', 'Unknown error'))
                         logger.error(f"Render failed: {error_message}")
@@ -302,13 +305,9 @@ class CreatomateService:
                     
                     attempts += 1
                 
-                if not render_complete:
-                    logger.warning("Render did not complete within the timeout period")
-                    return video_path
-                
-                # Return the processed video URL instead of downloading it
-                logger.info(f"Video processed with Creatomate template, URL: {processed_video_url}")
-                return processed_video_url
+                # If we reach here, the render did not complete within the timeout period
+                logger.warning("Render did not complete within the timeout period")
+                return video_path
                 
         except httpx.HTTPStatusError as e:
             error_detail = ""
