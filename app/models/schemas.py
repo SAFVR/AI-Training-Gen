@@ -45,8 +45,9 @@ class VideoGenerationResponse(BaseModel):
     created_at: str = Field(..., description="Timestamp of video creation")
 
 class VideoUploadRequest(BaseModel):
-    title: str = Field(..., description="Title for the uploaded video")
+    title: str = Field(..., description="Title for the video")
     description: Optional[str] = Field(None, description="Description of the video content")
+    video_url: str = Field(..., description="S3 URL of the video to process with captions")
 
 class VideoUploadResponse(BaseModel):
     original_video_url: str = Field(..., description="URL of the uploaded video in S3")

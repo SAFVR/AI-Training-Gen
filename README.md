@@ -150,22 +150,27 @@ The response will include:
 - `s3_video_url`: S3 URL of the uploaded video
 - `creatomate_video_url`: URL of the video processed by Creatomate with captions
 
-### Upload Video
+### Caption Generator
 
-Use the `/api/upload_video` endpoint to upload an existing video for S3 storage and Creatomate processing:
+Use the `/api/caption_generator` endpoint to process an existing S3 video with Creatomate for caption generation:
 
 ```
-POST /api/upload_video
-Content-Type: multipart/form-data
+POST /api/caption_generator
+Content-Type: application/json
 
-title: Video Title
-description: Video Description (optional)
-video_file: [binary file data]
+{
+  "title": "Video Title",
+  "description": "Video Description (optional)",
+  "video_url": "https://your-s3-bucket.s3.amazonaws.com/your-video.mp4"
+}
 ```
 
 The response will include:
-- `original_video_url`: S3 URL of the uploaded video
+- `original_video_url`: S3 URL of the original video
 - `creatomate_video_url`: URL of the video processed by Creatomate with captions
+- `title`: Title of the video
+- `description`: Description of the video (if provided)
+- `created_at`: Timestamp of when the video was processed
 
 ## API Documentation
 

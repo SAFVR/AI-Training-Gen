@@ -195,11 +195,11 @@ class CreatomateService:
             logger.error(f"Error uploading file to Creatomate: {str(e)}")
             raise Exception(f"Creatomate file upload failed: {str(e)}") from e
             
-    async def process_video_with_template(self, video_path: str, s3_video_url: str = None) -> str:
-        """Process a video with a Creatomate template for caption generation
+    async def process_video_with_template(self, video_path, s3_video_url=None):
+        """Process a video with a Creatomate template.
         
         Args:
-            video_path: Path to the local video file
+            video_path: Path to the local video file. Can be None if s3_video_url is provided.
             s3_video_url: Optional URL to the video in S3. If provided, this URL will be used instead of uploading the video.
             
         Returns:
@@ -207,7 +207,13 @@ class CreatomateService:
         """
         try:
             # Use the provided S3 URL if available, otherwise upload the video
-            video_url = s3_video_url if s3_video_url else await self._upload_file(video_path)
+            if s3_video_url:
+                video_url = s3_video_url
+            elif video_path:
+                video_url = await self._upload_file(video_path)
+            else:
+                raise ValueError("Either video_path or s3_video_url must be provided")
+                
             logger.info(f"Using video URL for Creatomate: {video_url}")
             
             # Prepare the payload for the template rendering exactly as in the curl example
