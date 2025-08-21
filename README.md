@@ -2,6 +2,14 @@
 
 A FastAPI application that generates training videos based on job descriptions using AI services.
 
+## Important Repository Information
+
+This repository has been restructured to exclude large binary files. The `new_main` branch is a clean branch that excludes FFmpeg binaries and sensitive credentials. When working with this repository:
+
+1. Always use the `new_main` branch for development
+2. Do not attempt to push the old `main` branch as it contains files exceeding GitHub's size limits
+3. Follow the FFmpeg setup instructions below to manually add the required binary files
+
 ## Features
 
 - Analyzes job descriptions to identify safety risks
