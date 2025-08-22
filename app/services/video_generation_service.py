@@ -277,7 +277,7 @@ class VideoGenerationService:
             response = VideoGenerationResponse(
                 video_url=video_url,
                 s3_video_url=s3_video_url or video_url,  # Fallback to local URL if S3 failed
-                creatomate_video_url=None,  # Explicitly set to None to remove from response
+                creatomate_video_url=creatomate_video_url,
                 job_title=request.job_title,
                 course_title=course_title,
                 duration=duration,
@@ -328,6 +328,25 @@ class VideoGenerationService:
             return
             
         try:
+            # First, clean up all temporary files in the video directory
+            video_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "video")
+            if os.path.exists(video_dir) and os.path.isdir(video_dir):
+                logger.info(f"Cleaning up temporary files in {video_dir}")
+                try:
+                    for file in os.listdir(video_dir):
+                        # Clean up subtitle files and temporary clip files
+                        if (file.startswith("subtitle_") and file.endswith(".srt")) or \
+                           (file.startswith("temp_clip_") and file.endswith("_temp.mp4")):
+                            temp_file_path = os.path.join(video_dir, file)
+                            try:
+                                os.remove(temp_file_path)
+                                logger.info(f"Removed temporary file: {temp_file_path}")
+                            except Exception as temp_file_err:
+                                logger.warning(f"Could not remove temporary file {temp_file_path}: {str(temp_file_err)}")
+                except Exception as list_err:
+                    logger.warning(f"Could not list files in video directory: {str(list_err)}")
+            
+            # Then clean up the temp directory
             if os.path.exists(temp_dir) and os.path.isdir(temp_dir):
                 logger.info(f"Cleaning up temporary files in {temp_dir}")
                 # List files before deletion for debugging purposes

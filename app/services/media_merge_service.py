@@ -8,6 +8,7 @@ import zipfile
 from typing import List, Optional
 from loguru import logger
 
+
 class MediaMergeService:
     def __init__(self):
         # Try to find ffmpeg in the system PATH
@@ -379,11 +380,11 @@ class MediaMergeService:
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
             # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
-            # Using Alignment=8 to position subtitles at the top center of the frame
+            # Using Alignment=2 for top center positioning
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=24,FontName=Arial,Alignment=8,BorderStyle=3,Outline=2,Shadow=1,MarginV=30,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -411,7 +412,7 @@ class MediaMergeService:
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:borderw=2:bordercolor=black@0.8:x=(w-text_w)/2:y=30,scale=1920:1080",
+                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
@@ -524,10 +525,11 @@ class MediaMergeService:
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
             # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
+            # Using Alignment=2 for top center positioning
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=18,Alignment=8,BorderStyle=1,Outline=1,Shadow=0,MarginV=20',scale=1920:1080",
+                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -551,10 +553,11 @@ class MediaMergeService:
                 logger.warning("Subtitle embedding failed, trying alternative method")
                 
                 # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
+                # Position subtitles at the top center of the frame
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=18:box=0:borderw=1:bordercolor=black@0.8:x=(w-text_w)/2:y=20,scale=1920:1080",
+                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
@@ -573,44 +576,21 @@ class MediaMergeService:
                 
                 if alt_subtitle_process.returncode != 0:
                     logger.error(f"Alternative subtitle method failed: {alt_subtitle_process.stderr}")
-                    logger.warning("All subtitle methods failed, continuing with video and audio only")
+                    logger.warning("All subtitle methods failed, using video without subtitles")
                     subtitle_video_path = video_path
             
-            # Now merge the video with audio
-            audio_cmd = [
-                self.ffmpeg_path,
-                '-i', subtitle_video_path,
-                '-i', audio_path,
-                '-c:v', 'copy',  # Copy video stream without re-encoding
-                '-c:a', 'aac',   # Encode audio as AAC
-                '-map', '0:v',   # Use video from first input
-                '-map', '1:a',   # Use audio from second input
-                '-shortest',      # Match duration to shortest input
-                '-y',            # Overwrite output file if it exists
-                output_path
-            ]
-            
-            # Run ffmpeg command to add audio
-            audio_process = subprocess.run(
-                audio_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
+            # Copy the subtitle video as the final output (no audio to merge)
+            if subtitle_video_path != output_path:
+                shutil.copy2(subtitle_video_path, output_path)
             
             # Clean up temporary files if they were created
             for temp_file in [temp_video_path, subtitle_video_path]:
-                if temp_file != video_path and os.path.exists(temp_file):
+                if temp_file != video_path and temp_file != output_path and os.path.exists(temp_file):
                     os.remove(temp_file)
-            
-            if audio_process.returncode != 0:
-                logger.error(f"ffmpeg audio error: {audio_process.stderr}")
-                raise Exception(f"ffmpeg audio error: {audio_process.stderr}")
                 
         except Exception as e:
-            logger.error(f"Error merging video and audio: {str(e)}")
-            raise Exception(f"Failed to merge video and audio: {str(e)}")
+            logger.error(f"Error merging video with subtitle only: {str(e)}")
+            raise Exception(f"Failed to merge video with subtitle only: {str(e)}")
     
     async def _concatenate_videos(self, input_files: List[str], output_path: str) -> None:
         """Concatenate multiple video files into one"""
@@ -682,6 +662,7 @@ class MediaMergeService:
         except Exception as e:
             logger.error(f"Error checking ffmpeg: {str(e)}")
             return False
+
 
 # Create a singleton instance
 media_merge_service = MediaMergeService()
