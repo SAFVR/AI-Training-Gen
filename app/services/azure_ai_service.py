@@ -38,19 +38,39 @@ class AzureAIService:
                 result = response.json()
                 
                 # Handle both URL and base64 response formats
-                if "url" in result["data"][0]:
+                logger.debug(f"Azure AI response keys: {result.keys()}")
+                logger.debug(f"Azure AI data structure: {json.dumps(result.get('data', []), indent=2)[:500]}..." if len(json.dumps(result.get('data', []))) > 500 else json.dumps(result.get('data', []), indent=2))
+                
+                if "data" not in result or not result["data"]:
+                    raise Exception("No data field in Azure AI response")
+                    
+                if len(result["data"]) == 0:
+                    raise Exception("Empty data array in Azure AI response")
+                
+                data_item = result["data"][0]
+                logger.debug(f"Data item keys: {data_item.keys()}")
+                
+                if "url" in data_item and data_item["url"]:
                     # Download the image from URL
-                    image_url = result["data"][0]["url"]
+                    image_url = data_item["url"]
+                    logger.info(f"Using image URL from Azure AI: {image_url[:50]}..." if len(image_url) > 50 else image_url)
                     image_response = await client.get(image_url)
                     image_response.raise_for_status()
                     image_bytes = image_response.content
-                elif "b64_json" in result["data"][0]:
+                elif "b64_json" in data_item and data_item["b64_json"]:
                     # Decode base64 image data
                     import base64
-                    image_data = result["data"][0]["b64_json"]
+                    logger.info("Using base64 image data from Azure AI")
+                    image_data = data_item["b64_json"]
                     image_bytes = base64.b64decode(image_data)
+                elif "revised_prompt" in data_item:
+                    # Sometimes Azure returns a revised prompt without an image
+                    logger.warning(f"Azure AI returned a revised prompt but no image: {data_item.get('revised_prompt', '')[:100]}...")
+                    raise Exception("Azure AI returned a revised prompt but no image")
                 else:
-                    raise Exception("No image data found in response")
+                    # Log the entire response for debugging
+                    logger.error(f"Unexpected response structure from Azure AI: {json.dumps(result, indent=2)[:1000]}..." if len(json.dumps(result)) > 1000 else json.dumps(result, indent=2))
+                    raise Exception(f"No image data found in response. Available keys: {list(data_item.keys())}")
                 
                 # Save the image to the output path
                 os.makedirs(os.path.dirname(output_path), exist_ok=True)

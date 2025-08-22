@@ -126,10 +126,21 @@ class LiteLLMService:
     
     async def generate_video_segmentation(self, job_data: Dict[str, Any], course_outline: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Generate video segmentation based on course outline"""
-        system_prompt = """You are a video production expert. Create a detailed segmentation for a training video based on the course outline. 
+        system_prompt = """You are a video production expert specializing in safety training videos. 
+        Create a detailed segmentation for a training video based on the provided course outline. 
         Format your response as JSON with an array of 18 segments, each containing a brief description of what should be covered in that segment."""
         
         sections_str = "\n".join([f"- {section}" for section in course_outline["sections"]])
+        
+        # Handle different schema versions - check for required fields
+        location = job_data.get('location', 'Not specified')
+        equipment_used = job_data.get('equipment_used', 'Not specified')
+        industry = job_data.get('industry', job_data.get('industry_sector', 'Not specified'))
+        target_audience = job_data.get('target_audience', 'Workers')
+        key_points = job_data.get('key_points', [])
+        
+        # Format key points if available
+        key_points_str = "\n".join([f"- {point}" for point in key_points]) if key_points else "Not specified"
         
         prompt = f"""Create a detailed segmentation for a training video based on the following course outline:
         Course Title: {course_outline['title']}
@@ -141,20 +152,48 @@ class LiteLLMService:
         Job Details:
         Job Title: {job_data['job_title']}
         Job Description: {job_data['job_description']}
-        Location: {job_data['location']}
-        Equipment Used: {job_data['equipment_used']}
-        Industry Sector: {job_data['industry_sector']}
+        Industry: {industry}
+        Target Audience: {target_audience}
+        
+        Additional Information (if available):
+        Location: {location}
+        Equipment Used: {equipment_used}
+        Key Points: {key_points_str}
         
         Create exactly 18 video segments that cover the entire course content. Each segment should be focused on a specific topic or skill."""
         
         try:
             result = await self.generate_completion(prompt, system_prompt)
-            segments = json.loads(result)
+            # Handle potential JSON format issues
+            try:
+                segments = json.loads(result)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse video segmentation response as JSON: {e}")
+                # Try to extract JSON from the response if it contains other text
+                import re
+                json_match = re.search(r'\[\s*{.*}\s*\]', result, re.DOTALL)
+                if json_match:
+                    try:
+                        segments = json.loads(json_match.group(0))
+                    except json.JSONDecodeError:
+                        raise  # If this also fails, go to the outer exception handler
+                else:
+                    raise  # If no JSON-like pattern found, go to the outer exception handler
+            
+            # Validate segments structure
+            if not isinstance(segments, list):
+                logger.warning(f"Expected segments to be a list, got {type(segments)}")
+                if isinstance(segments, dict) and "segments" in segments:
+                    # Handle case where API returns {"segments": [...]} instead of directly [...]  
+                    segments = segments["segments"]
+                else:
+                    # Create a default list if segments is not a list
+                    segments = []
             
             # Ensure we have exactly 18 segments
-            if isinstance(segments, list) and len(segments) > 18:
+            if len(segments) > 18:
                 segments = segments[:18]
-            elif isinstance(segments, list) and len(segments) < 18:
+            elif len(segments) < 18:
                 # Pad with generic segments if needed
                 for i in range(len(segments), 18):
                     segments.append({"description": f"Additional safety information part {i+1}"})
@@ -199,15 +238,29 @@ class LiteLLMService:
         
         segments_str = "\n".join([f"- Segment {i+1}: {desc}" for i, desc in enumerate(segment_descriptions)])
         
+        # Handle different schema versions - check for required fields
+        location = job_data.get('location', 'Not specified')
+        equipment_used = job_data.get('equipment_used', 'Not specified')
+        industry = job_data.get('industry', job_data.get('industry_sector', 'Not specified'))
+        target_audience = job_data.get('target_audience', 'Workers')
+        key_points = job_data.get('key_points', [])
+        
+        # Format key points if available
+        key_points_str = "\n".join([f"- {point}" for point in key_points]) if key_points else "Not specified"
+        
         prompt = f"""Create detailed prompts for a training video with the following segments:
         {segments_str}
         
         Job Details:
-        Job Title: {job_data['job_title']}
-        Job Description: {job_data['job_description']}
-        Location: {job_data['location']}
-        Equipment Used: {job_data['equipment_used']}
-        Industry Sector: {job_data['industry_sector']}
+        Job Title: {job_data.get('job_title', 'Safety Training')}
+        Job Description: {job_data.get('job_description', 'Safety training for workers')}
+        Industry: {industry}
+        Target Audience: {target_audience}
+        
+        Additional Information (if available):
+        Location: {location}
+        Equipment Used: {equipment_used}
+        Key Points: {key_points_str}
         Video Type: {video_type}
         
         For each of the 18 segments, create:
@@ -219,12 +272,40 @@ class LiteLLMService:
         
         try:
             result = await self.generate_completion(prompt, system_prompt)
-            clip_prompts = json.loads(result)
+            
+            # Handle potential JSON format issues
+            try:
+                clip_prompts = json.loads(result)
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse video clip prompts response as JSON: {e}")
+                # Try to extract JSON from the response if it contains other text
+                import re
+                json_match = re.search(r'\[\s*{.*}\s*\]', result, re.DOTALL)
+                if json_match:
+                    try:
+                        clip_prompts = json.loads(json_match.group(0))
+                    except json.JSONDecodeError:
+                        raise  # If this also fails, go to the outer exception handler
+                else:
+                    raise  # If no JSON-like pattern found, go to the outer exception handler
+            
+            # Validate clip_prompts structure
+            if not isinstance(clip_prompts, list):
+                logger.warning(f"Expected clip_prompts to be a list, got {type(clip_prompts)}")
+                if isinstance(clip_prompts, dict) and any(key in clip_prompts for key in ["prompts", "clips", "segments"]):
+                    # Handle case where API returns {"prompts": [...]} instead of directly [...]
+                    for key in ["prompts", "clips", "segments"]:
+                        if key in clip_prompts:
+                            clip_prompts = clip_prompts[key]
+                            break
+                else:
+                    # Create a default list if clip_prompts is not a list
+                    clip_prompts = []
             
             # Ensure we have exactly 18 clip prompts with all required fields
-            if isinstance(clip_prompts, list) and len(clip_prompts) > 18:
+            if len(clip_prompts) > 18:
                 clip_prompts = clip_prompts[:18]
-            elif isinstance(clip_prompts, list) and len(clip_prompts) < 18:
+            elif len(clip_prompts) < 18:
                 # Pad with generic prompts if needed
                 for i in range(len(clip_prompts), 18):
                     clip_prompts.append({
@@ -234,8 +315,9 @@ class LiteLLMService:
                     })
             
             # Ensure all required fields are present
-            for i, prompt in enumerate(clip_prompts):
-                if not isinstance(prompt, dict):
+            for i in range(len(clip_prompts)):
+                prompt_obj = clip_prompts[i]
+                if not isinstance(prompt_obj, dict):
                     clip_prompts[i] = {
                         "video_prompt": f"Safety training visual for segment {i+1}",
                         "audio_prompt": f"Narration for safety segment {i+1}",
@@ -243,21 +325,32 @@ class LiteLLMService:
                     }
                     continue
                     
-                if "video_prompt" not in prompt:
-                    prompt["video_prompt"] = f"Safety training visual for segment {i+1}"
-                if "audio_prompt" not in prompt:
-                    prompt["audio_prompt"] = f"Narration for safety segment {i+1}"
-                if "subtitle_text" not in prompt:
-                    prompt["subtitle_text"] = f"Safety Tip #{i+1}"
+                if "video_prompt" not in prompt_obj:
+                    prompt_obj["video_prompt"] = f"Safety training visual for segment {i+1}"
+                if "audio_prompt" not in prompt_obj:
+                    prompt_obj["audio_prompt"] = f"Narration for safety segment {i+1}"
+                if "subtitle_text" not in prompt_obj:
+                    prompt_obj["subtitle_text"] = f"Safety Tip #{i+1}"
             
             return clip_prompts
-        except json.JSONDecodeError:
-            logger.error("Failed to parse video clip prompts response as JSON")
+        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as e:
+            logger.error(f"Error processing video clip prompts: {str(e)}")
+            # Log the raw response for debugging
+            logger.debug(f"Raw response that caused the error: {result[:500]}..." if len(result) > 500 else result)
+            
+            # Create segment descriptions for fallback prompts
+            segment_texts = []
+            for i in range(18):
+                if i < len(segmentation) and isinstance(segmentation[i], dict) and "description" in segmentation[i]:
+                    segment_texts.append(segmentation[i]["description"])
+                else:
+                    segment_texts.append(f"Safety segment {i+1}")
+            
             # Fallback to a simple structure if JSON parsing fails
             return [{
-                "video_prompt": f"Safety training visual for segment {i+1}",
-                "audio_prompt": f"Narration for safety segment {i+1}",
-                "subtitle_text": f"Safety Tip #{i+1}"
+                "video_prompt": f"Safety training visual showing {segment_texts[i]}",
+                "audio_prompt": f"Narration explaining {segment_texts[i]}",
+                "subtitle_text": f"Safety: {segment_texts[i][:30]}" if len(segment_texts[i]) > 30 else segment_texts[i]
             } for i in range(18)]
 
 # Create a singleton instance

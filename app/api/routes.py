@@ -20,6 +20,13 @@ async def generate_video(request: VideoGenerationRequest):
         # Process the request and generate the video
         response = await video_generation_service.generate_video(request)
         
+        # Ensure Creatomate URL is NOT included in the response as requested
+        if response.creatomate_video_url is not None:
+            logger.warning("Creatomate video URL is still present in response, will be removed")
+            response.creatomate_video_url = None
+        
+        logger.info("Creatomate URL removed from response as requested")
+            
         logger.info(f"Video generation completed for job: {request.job_title}")
         return response
     except Exception as e:

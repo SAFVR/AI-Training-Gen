@@ -97,7 +97,17 @@ Alternatively, you can download these files from our shared storage location (co
 
 1. Sign up for a Creatomate account at [https://creatomate.com](https://creatomate.com)
 2. Create a new template for video captions or use an existing one
-3. Get your API key from the Creatomate dashboard
+3. Get your API key from the Creatomate dashboard under Account Settings > API
+4. Set the `CREATOMATE_API_KEY` in your `.env` file
+5. Create a new template for your videos:
+   - Go to Templates in your Creatomate dashboard
+   - Create a new template with video and text elements
+   - Configure text elements for subtitles with appropriate styling
+   - Set up video elements to display your generated content
+   - Save the template and copy its ID
+6. Set the `CREATOMATE_TEMPLATE_ID` in your `.env` file
+
+Creatomate is used in this application to combine video clips with subtitles and create a professional final output. The service handles the composition of multiple media elements including videos, images, audio tracks, and text overlays.
 4. Add your API key and template ID to the `.env` file:
    ```
    CREATOMATE_API_KEY=your_creatomate_api_key
