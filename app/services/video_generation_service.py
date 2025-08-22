@@ -273,7 +273,7 @@ class VideoGenerationService:
             else:
                 logger.warning("Creatomate URL is missing, falling back to S3 or local URL")
                 
-            # Create response without including Creatomate URL
+            # Create response including Creatomate URL
             response = VideoGenerationResponse(
                 video_url=video_url,
                 s3_video_url=s3_video_url or video_url,  # Fallback to local URL if S3 failed
@@ -286,7 +286,7 @@ class VideoGenerationService:
                 created_at=datetime.datetime.now().isoformat()
             )
             
-            logger.info("Creatomate URL removed from response as requested")
+            logger.info(f"Creatomate URL included in response: {creatomate_video_url}")
             
             return response
         except Exception as e:

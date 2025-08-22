@@ -35,6 +35,29 @@ class MediaMergeService:
             logger.warning("Media merging functionality may not work properly.")
 
         
+    def _get_system_font_path(self) -> str:
+        """Get a system font path based on the operating system"""
+        if sys.platform == "win32":
+            # Windows font path
+            return 'C:/Windows/Fonts/arial.ttf'
+        elif sys.platform == "darwin":
+            # macOS font path
+            return '/System/Library/Fonts/Helvetica.ttc'
+        else:
+            # Linux font path (Ubuntu/Debian)
+            font_paths = [
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Debian/Ubuntu
+                '/usr/share/fonts/TTF/DejaVuSans.ttf',              # Arch
+                '/usr/share/fonts/dejavu/DejaVuSans.ttf'            # Fedora
+            ]
+            
+            for path in font_paths:
+                if os.path.exists(path):
+                    return path
+            
+            # Fallback to a common font that might exist
+            return '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf'
+    
     def _find_ffmpeg(self) -> str:
         """Find ffmpeg executable or download a portable version if not found"""
         # First check if ffmpeg is in PATH
@@ -379,19 +402,18 @@ class MediaMergeService:
             # Create a temporary file for the video with hardcoded subtitles
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
-            # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
-            # Using Alignment=2 for top center positioning
+            # Try using subtitles filter first (preferred method) - with simplified styling
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{os.path.abspath(subtitle_path).replace('\\', '/')}':",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
                 subtitle_video_path
             ]
             
-            logger.info(f"Running subtitle embedding command")
+            logger.info(f"Running subtitle embedding command with subtitles filter")
             
             # Run ffmpeg command to add subtitles
             subtitle_process = subprocess.run(
@@ -403,35 +425,32 @@ class MediaMergeService:
             )
             
             if subtitle_process.returncode != 0:
-                logger.error(f"ffmpeg subtitle error: {subtitle_process.stderr}")
-                # If subtitles fail, try an alternative approach with drawtext filter
-                logger.warning("Subtitle embedding failed, trying alternative method")
+                logger.warning(f"Subtitles filter failed: {subtitle_process.stderr}")
+                logger.info("Trying fallback method with drawtext filter")
                 
-                # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame
-                alt_subtitle_cmd = [
+                # Fallback to drawtext filter - without specifying fontname to avoid errors
+                fallback_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
+                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontfile='{self._get_system_font_path()}':fontcolor=white:fontsize=14:box=0:borderw=1:bordercolor=black@0.8:x=(w-text_w)/2:y=10,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
                     subtitle_video_path
                 ]
                 
-                logger.info(f"Running alternative subtitle embedding command with drawtext")
-                
-                alt_subtitle_process = subprocess.run(
-                    alt_subtitle_cmd,
+                logger.info("Running fallback subtitle embedding with drawtext")
+                fallback_process = subprocess.run(
+                    fallback_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     check=False
                 )
                 
-                if alt_subtitle_process.returncode != 0:
-                    logger.error(f"Alternative subtitle method failed: {alt_subtitle_process.stderr}")
-                    logger.warning("All subtitle methods failed, continuing with video and audio only")
+                if fallback_process.returncode != 0:
+                    logger.error(f"Fallback subtitle method also failed: {fallback_process.stderr}")
+                    logger.warning("All subtitle embedding methods failed, continuing with video and audio only")
                     subtitle_video_path = video_path
             
             # Now merge the video with audio
@@ -521,22 +540,20 @@ class MediaMergeService:
                 # Now use the generated video for further processing
                 video_path = temp_video_path
                 
-            # Create a temporary file for the video with hardcoded subtitles
-            subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
-            
-            # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
-            # Using Alignment=2 for top center positioning
+            # Try using subtitles filter first (preferred method) - with simplified styling
+            # Convert subtitle path to absolute path with forward slashes for FFmpeg
+            abs_subtitle_path = os.path.abspath(subtitle_path).replace('\\', '/')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{subtitle_path.replace('\\', '/')}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{abs_subtitle_path}'",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
-                subtitle_video_path
+                output_path
             ]
             
-            logger.info(f"Running subtitle embedding command")
+            logger.info(f"Running subtitle embedding command with subtitles filter")
             
             # Run ffmpeg command to add subtitles
             subtitle_process = subprocess.run(
@@ -547,46 +564,39 @@ class MediaMergeService:
                 check=False
             )
             
+            # Clean up temporary files if they were created
+            if temp_video_path != video_path and os.path.exists(temp_video_path):
+                os.remove(temp_video_path)
+            
             if subtitle_process.returncode != 0:
-                logger.error(f"ffmpeg subtitle error: {subtitle_process.stderr}")
-                # If subtitles fail, try an alternative approach with drawtext filter
-                logger.warning("Subtitle embedding failed, trying alternative method")
+                logger.warning(f"Subtitles filter failed: {subtitle_process.stderr}")
+                logger.info("Trying fallback method with drawtext filter")
                 
-                # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame
-                alt_subtitle_cmd = [
+                # Fallback to drawtext filter - without specifying fontname to avoid errors
+                fallback_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
+                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontfile='{self._get_system_font_path()}':fontcolor=white:fontsize=14:box=0:borderw=1:bordercolor=black@0.8:x=(w-text_w)/2:y=10,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
-                    subtitle_video_path
+                    output_path
                 ]
                 
-                logger.info(f"Running alternative subtitle embedding command with drawtext")
-                
-                alt_subtitle_process = subprocess.run(
-                    alt_subtitle_cmd,
+                logger.info("Running fallback subtitle embedding with drawtext")
+                fallback_process = subprocess.run(
+                    fallback_cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     check=False
                 )
                 
-                if alt_subtitle_process.returncode != 0:
-                    logger.error(f"Alternative subtitle method failed: {alt_subtitle_process.stderr}")
-                    logger.warning("All subtitle methods failed, using video without subtitles")
-                    subtitle_video_path = video_path
-            
-            # Copy the subtitle video as the final output (no audio to merge)
-            if subtitle_video_path != output_path:
-                shutil.copy2(subtitle_video_path, output_path)
-            
-            # Clean up temporary files if they were created
-            for temp_file in [temp_video_path, subtitle_video_path]:
-                if temp_file != video_path and temp_file != output_path and os.path.exists(temp_file):
-                    os.remove(temp_file)
+                if fallback_process.returncode != 0:
+                    logger.error(f"Fallback subtitle method also failed: {fallback_process.stderr}")
+                    # If all subtitle methods fail, just copy the original video
+                    shutil.copy2(video_path, output_path)
+                    logger.warning("All subtitle embedding methods failed, using video without subtitles")
                 
         except Exception as e:
             logger.error(f"Error merging video with subtitle only: {str(e)}")
