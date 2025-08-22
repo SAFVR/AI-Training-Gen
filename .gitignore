@@ -40,3 +40,5 @@ bin/ffmpeg.exe
 # AWS credentials
 video-app-user_accessKeys.csv
 *.accessKeys.csv
+
+test/

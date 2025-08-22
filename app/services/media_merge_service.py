@@ -5,6 +5,7 @@ import sys
 import shutil
 import urllib.request
 import zipfile
+import uuid
 from typing import List, Optional
 from loguru import logger
 
@@ -403,10 +404,12 @@ class MediaMergeService:
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
             # Try using subtitles filter first (preferred method) - with simplified styling
+            # Convert subtitle path to absolute path with forward slashes for FFmpeg
+            abs_subtitle_path = os.path.abspath(subtitle_path).replace('\\', '/')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{os.path.abspath(subtitle_path).replace('\\', '/')}':",
+                '-vf', f"subtitles='{abs_subtitle_path}':force_style='FontSize=24,PrimaryColour=&HFFFFFF,OutlineColour=&H000000,BackColour=&H000000,BorderStyle=1,Outline=1,Shadow=1,MarginV=35'",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -489,9 +492,21 @@ class MediaMergeService:
             logger.error(f"Error merging video and audio: {str(e)}")
             raise Exception(f"Failed to merge video and audio: {str(e)}")
             
-    async def _merge_video_subtitle_only(self, video_path: str, subtitle_path: str, output_path: str) -> None:
-        """Merge video and subtitle without audio"""
+    async def _merge_video_subtitle_only(self, video_path: str, subtitle_path: str, output_path: str) -> str:
+        """Merge video and subtitle without audio
+        
+        Args:
+            video_path: Path to the video file
+            subtitle_path: Path to the subtitle file
+            output_path: Path to the output file
+            
+        Returns:
+            Path to the output file
+        """
         try:
+            # Create output directory if it doesn't exist
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
             # Read subtitle text from file
             with open(subtitle_path, 'r', encoding='utf-8') as f:
                 subtitle_content = f.read()
@@ -539,68 +554,74 @@ class MediaMergeService:
                 
                 # Now use the generated video for further processing
                 video_path = temp_video_path
+            
+            # Create a temporary SRT file with the subtitle text
+            temp_srt_path = os.path.join(os.path.dirname(output_path), f"temp_subtitle_{uuid.uuid4()}.srt")
+            
+            try:
+                # Write subtitle text to a temporary SRT file
+                with open(temp_srt_path, 'w', encoding='utf-8') as f:
+                    f.write("1\n00:00:00,000 --> 00:00:30,000\n" + subtitle_text)
                 
-            # Try using subtitles filter first (preferred method) - with simplified styling
-            # Convert subtitle path to absolute path with forward slashes for FFmpeg
-            abs_subtitle_path = os.path.abspath(subtitle_path).replace('\\', '/')
-            subtitle_cmd = [
-                self.ffmpeg_path,
-                '-i', video_path,
-                '-vf', f"subtitles='{abs_subtitle_path}'",
-                '-c:v', 'libx264',
-                '-preset', 'fast',
-                '-y',
-                output_path
-            ]
-            
-            logger.info(f"Running subtitle embedding command with subtitles filter")
-            
-            # Run ffmpeg command to add subtitles
-            subtitle_process = subprocess.run(
-                subtitle_cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                check=False
-            )
-            
-            # Clean up temporary files if they were created
-            if temp_video_path != video_path and os.path.exists(temp_video_path):
-                os.remove(temp_video_path)
-            
-            if subtitle_process.returncode != 0:
-                logger.warning(f"Subtitles filter failed: {subtitle_process.stderr}")
-                logger.info("Trying fallback method with drawtext filter")
+                # Use the temporary SRT file with the subtitles filter
+                temp_srt_path_formatted = temp_srt_path.replace('\\', '/')
                 
-                # Fallback to drawtext filter - without specifying fontname to avoid errors
-                fallback_cmd = [
+                cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{subtitle_text.replace("'", "\'").replace('"', '\"')}':fontfile='{self._get_system_font_path()}':fontcolor=white:fontsize=14:box=0:borderw=1:bordercolor=black@0.8:x=(w-text_w)/2:y=10,scale=1920:1080",
+                    '-vf', f"subtitles='{temp_srt_path_formatted}'",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
                     output_path
                 ]
                 
-                logger.info("Running fallback subtitle embedding with drawtext")
-                fallback_process = subprocess.run(
-                    fallback_cmd,
+                logger.info(f"Running subtitle embedding with temporary SRT file")
+                result = subprocess.run(
+                    cmd,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
                     check=False
                 )
                 
-                if fallback_process.returncode != 0:
-                    logger.error(f"Fallback subtitle method also failed: {fallback_process.stderr}")
-                    # If all subtitle methods fail, just copy the original video
-                    shutil.copy2(video_path, output_path)
-                    logger.warning("All subtitle embedding methods failed, using video without subtitles")
+                # Clean up temporary files
+                if os.path.exists(temp_srt_path):
+                    try:
+                        os.remove(temp_srt_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove temporary SRT file: {e}")
+                        
+                if temp_video_path != video_path and os.path.exists(temp_video_path):
+                    try:
+                        os.remove(temp_video_path)
+                    except Exception as e:
+                        logger.warning(f"Failed to remove temporary video file: {e}")
+                
+                # Check if the command was successful
+                if result.returncode == 0:
+                    logger.info("Subtitle embedding successful")
+                    return output_path
+                else:
+                    logger.warning(f"Subtitle embedding failed: {result.stderr}")
+                    
+                    # If subtitles filter fails, just copy the original video
+                    shutil.copy(video_path, output_path)
+                    logger.warning("Subtitle embedding failed, using video without subtitles")
+                    return output_path
+                    
+            except Exception as e:
+                logger.error(f"Error creating temporary SRT file: {e}")
+                # If SRT creation fails, just copy the original video
+                shutil.copy(video_path, output_path)
+                logger.warning("Failed to create temporary SRT file, using video without subtitles")
+                return output_path
                 
         except Exception as e:
             logger.error(f"Error merging video with subtitle only: {str(e)}")
-            raise Exception(f"Failed to merge video with subtitle only: {str(e)}")
+            # If an error occurs, just copy the original video
+            shutil.copy(video_path, output_path)
+            return output_path
     
     async def _concatenate_videos(self, input_files: List[str], output_path: str) -> None:
         """Concatenate multiple video files into one"""
