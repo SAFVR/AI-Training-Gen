@@ -394,13 +394,13 @@ class MediaMergeService:
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
             # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
-            # Using Alignment=2 for top center positioning
+            # Using Alignment=2 for top center positioning with smaller font size
             # Properly escape the subtitle path for Windows
             escaped_subtitle_path = subtitle_path.replace('\\', '/').replace(':', '\\:')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=30,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -425,13 +425,13 @@ class MediaMergeService:
                 logger.warning("Subtitle embedding failed, trying alternative method")
                 
                 # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame
+                # Position subtitles at the top center of the frame with smaller font size
                 # Properly escape subtitle text for ffmpeg drawtext filter
                 escaped_text = subtitle_text.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
+                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=10:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y=10,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
@@ -545,13 +545,13 @@ class MediaMergeService:
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
             # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
-            # Using Alignment=2 for top center positioning
+            # Using Alignment=2 for top center positioning with smaller font size
             # Properly escape the subtitle path for Windows
             escaped_subtitle_path = subtitle_path.replace('\\', '/').replace(':', '\\:')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=24,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=50,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=30,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -576,13 +576,13 @@ class MediaMergeService:
                 logger.warning("Subtitle embedding failed, trying alternative method")
                 
                 # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame
+                # Position subtitles at the top center of the frame with smaller font size
                 # Properly escape subtitle text for ffmpeg drawtext filter
                 escaped_text = subtitle_text.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=24:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=50,scale=1920:1080",
+                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=10:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y=10,scale=1920:1080",
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
