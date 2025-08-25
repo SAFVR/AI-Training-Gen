@@ -121,8 +121,40 @@ class MediaMergeService:
                 intermediate_file = f"{temp_dir}/temp_clip_{i+1}.mp4"
                 
                 # Check if audio file exists and is not empty
-                has_audio = os.path.exists(audio_path) and os.path.getsize(audio_path) > 0
-                audio_duration = 10.0  # Default duration in seconds
+                audio_duration = 13.0  # Default duration in seconds
+                has_audio = False
+                
+                # Log the audio path for debugging
+                logger.info(f"Processing audio for clip {i+1}: '{audio_path}'")
+                
+                # Validate audio file path and existence
+                if not audio_path:
+                    logger.warning(f"Audio path is None or empty for clip {i+1}")
+                elif not os.path.exists(audio_path):
+                    logger.warning(f"Audio file does not exist for clip {i+1}: {audio_path}")
+                    # Check if the directory exists
+                    dir_path = os.path.dirname(audio_path)
+                    if os.path.exists(dir_path):
+                        logger.info(f"Directory exists but file is missing: {dir_path}")
+                        try:
+                            files = os.listdir(dir_path)
+                            logger.info(f"Files in directory: {files[:10]}...")  # Show first 10 files
+                        except Exception as list_err:
+                            logger.error(f"Error listing directory: {str(list_err)}")
+                    else:
+                        logger.warning(f"Directory does not exist: {dir_path}")
+                elif not os.path.isfile(audio_path):
+                    logger.warning(f"Audio path exists but is not a file for clip {i+1}: {audio_path}")
+                else:
+                    try:
+                        file_size = os.path.getsize(audio_path)
+                        if file_size > 0:
+                            has_audio = True
+                            logger.info(f"Audio file found for clip {i+1}: {audio_path} ({file_size} bytes)")
+                        else:
+                            logger.warning(f"Audio file is empty for clip {i+1}: {audio_path}")
+                    except OSError as e:
+                        logger.warning(f"Error checking audio file for clip {i+1}: {audio_path} - {str(e)}")
                 
                 if has_audio:
                     # Get audio duration using ffmpeg
@@ -130,7 +162,8 @@ class MediaMergeService:
                         audio_duration = await self._get_audio_duration(audio_path)
                         logger.info(f"Detected audio duration for clip {i+1}: {audio_duration} seconds")
                     except Exception as e:
-                        logger.warning(f"Failed to get audio duration for clip {i+1}: {str(e)}. Using default 10 seconds.")
+                        logger.warning(f"Failed to get audio duration for clip {i+1}: {str(e)}. Using default 13 seconds.")
+                        audio_duration = 13.0
                 else:
                     logger.warning(f"Audio file missing or empty for clip {i+1}, creating silent audio with default duration")
                     # Create a silent audio file with the default duration
@@ -157,7 +190,7 @@ class MediaMergeService:
                     # Try to create a clip with just the video and subtitles, no audio
                     try:
                         logger.info(f"Attempting to create clip {i+1} without audio")
-                        await self._merge_video_subtitle_only(video_path, subtitle_file, intermediate_file)
+                        await self._merge_video_subtitle_only(video_path, subtitle_file, intermediate_file, audio_duration)
                         intermediate_files.append(intermediate_file)
                         logger.info(f"Created intermediate clip {i+1} with subtitles only (no audio)")
                     except Exception as e2:
@@ -185,7 +218,7 @@ class MediaMergeService:
             logger.error(f"Error merging media: {str(e)}")
             raise Exception(f"Media merging failed: {str(e)}")
     
-    async def _create_subtitle_file(self, subtitle_file: str, subtitle_text: str, duration_seconds: float = 10.0) -> None:
+    async def _create_subtitle_file(self, subtitle_file: str, subtitle_text: str, duration_seconds: float = 13.0) -> None:
         """Create a simple SRT subtitle file with duration based on audio length"""
         try:
             # Check if subtitle text is empty or None
@@ -287,18 +320,18 @@ class MediaMergeService:
         except FileNotFoundError as e:
             logger.error(f"Audio file not found: {str(e)}")
             # Return default duration instead of raising exception
-            logger.warning("Using default duration of 10 seconds")
-            return 10.0
+            logger.warning("Using default duration of 13 seconds")
+            return 13.0
         except ValueError as e:
             logger.error(f"Invalid audio file: {str(e)}")
             # Return default duration instead of raising exception
-            logger.warning("Using default duration of 10 seconds due to invalid audio file")
-            return 10.0
+            logger.warning("Using default duration of 13 seconds due to invalid audio file")
+            return 13.0
         except Exception as e:
             logger.error(f"Error getting audio duration: {str(e)}")
             # Return default duration instead of raising exception
-            logger.warning("Using default duration of 10 seconds due to error")
-            return 10.0
+            logger.warning("Using default duration of 13 seconds due to error")
+            return 13.0
     
     async def _create_silent_audio(self, silent_audio_path: str, duration_seconds: float) -> None:
         """Create a silent audio file with specified duration"""
@@ -345,12 +378,12 @@ class MediaMergeService:
             logger.info(f"Merging video with subtitle text: {subtitle_text}")
             
             # Get audio duration for setting image duration if needed
-            audio_duration = 10.0  # Default duration
+            audio_duration = 13.0  # Default duration
             try:
                 audio_duration = await self._get_audio_duration(audio_path)
                 logger.info(f"Using audio duration for clip: {audio_duration} seconds")
             except Exception as e:
-                logger.warning(f"Failed to get audio duration: {str(e)}. Using default 10 seconds.")
+                logger.warning(f"Failed to get audio duration: {str(e)}. Using default 13 seconds.")
             
             # Check if input is an image (png, jpg, etc.) that needs to be converted to video
             is_image = os.path.splitext(video_path)[1].lower() in ['.png', '.jpg', '.jpeg', '.webp', '.bmp']
@@ -490,7 +523,7 @@ class MediaMergeService:
             logger.error(f"Error merging video and audio: {str(e)}")
             raise Exception(f"Failed to merge video and audio: {str(e)}")
             
-    async def _merge_video_subtitle_only(self, video_path: str, subtitle_path: str, output_path: str) -> None:
+    async def _merge_video_subtitle_only(self, video_path: str, subtitle_path: str, output_path: str, audio_duration: float = 13.0) -> None:
         """Merge video and subtitle without audio"""
         try:
             # Read subtitle text from file
@@ -509,15 +542,14 @@ class MediaMergeService:
             temp_video_path = f"{os.path.splitext(output_path)[0]}_temp{os.path.splitext(output_path)[1]}"
             
             if is_image:
-                # Convert image to video with a default duration
-                default_duration = 10.0  # Default duration in seconds
-                logger.info(f"Converting image to video with default duration {default_duration} seconds")
+                # Convert image to video with duration matching audio
+                logger.info(f"Converting image to video with duration {audio_duration} seconds")
                 image_to_video_cmd = [
                     self.ffmpeg_path,
                     '-loop', '1',  # Loop the image
                     '-i', video_path,  # Input image
                     '-c:v', 'libx264',  # Use H.264 codec
-                    '-t', str(default_duration),  # Set default duration
+                    '-t', str(audio_duration),  # Set duration to match audio
                     '-pix_fmt', 'yuv420p',  # Required for compatibility
                     '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',  # Scale and pad to 1080p
                     '-y',  # Overwrite output
