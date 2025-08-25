@@ -224,7 +224,10 @@ class LiteLLMService:
         """Generate video clip prompts based on segmentation"""
         system_prompt = """You are a creative director for training videos. For each segment, create prompts for video generation, 
         audio narration, and subtitle text. Format your response as JSON with an array of 18 objects, each containing 
-        'video_prompt', 'audio_prompt', and 'subtitle_text' fields."""
+        'video_prompt', 'audio_prompt', and 'subtitle_text' fields.
+        
+        CRITICAL: Each audio_prompt must be exactly 20-24 words to achieve 9-13 seconds of spoken duration. 
+        Count words carefully and ensure concise, impactful safety messaging."""
         
         # Ensure each segment has a description field
         segment_descriptions = []
@@ -265,8 +268,14 @@ class LiteLLMService:
         
         For each of the 18 segments, create:
         1. A detailed {'image generation prompt' if video_type == 'image' else 'video generation prompt'} that describes the visual content
-        2. An audio narration prompt that provides the script for the narrator
+        2. An audio narration prompt that provides the script for the narrator (IMPORTANT: Keep audio narration to exactly 20-24 words to achieve 9-13 seconds duration when spoken at normal pace)
         3. A short, title-style subtitle text (max 10 words) that aligns with the narration
+        
+        AUDIO DURATION REQUIREMENTS:
+        - Each audio_prompt must be exactly 20-24 words
+        - This will result in approximately 9-13 seconds of spoken audio
+        - Use clear, concise language that delivers key safety information efficiently
+        - Avoid filler words and focus on essential safety points
         
         Make the prompts specific, detailed, and aligned with workplace safety training."""
         
