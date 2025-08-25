@@ -218,20 +218,43 @@ class MediaMergeService:
             logger.error(f"Error merging media: {str(e)}")
             raise Exception(f"Media merging failed: {str(e)}")
     
+    def _split_text_into_lines(self, text: str, words_per_line: int = 4) -> List[str]:
+        """Split text into multiple lines with approximately words_per_line words per line"""
+        if not text or text.strip() == "":
+            return ["[No subtitle text]"]
+        
+        words = text.strip().split()
+        lines = []
+        
+        # Handle case where there are fewer words than words_per_line
+        if len(words) <= words_per_line:
+            return [" ".join(words)]
+            
+        # Split text into lines with approximately words_per_line per line
+        for i in range(0, len(words), words_per_line):
+            line = " ".join(words[i:i + words_per_line])
+            lines.append(line)
+            
+        return lines
+
     async def _create_subtitle_file(self, subtitle_file: str, subtitle_text: str, duration_seconds: float = 13.0) -> None:
-        """Create a simple SRT subtitle file with duration based on audio length"""
+        """Create a simple SRT subtitle file with duration based on audio length, with text split into multiple lines"""
         try:
             # Check if subtitle text is empty or None
             if not subtitle_text or subtitle_text.strip() == "":
                 logger.warning(f"Empty subtitle text provided, creating subtitle file with placeholder text")
                 subtitle_text = "[No subtitle text]"
             
-            logger.info(f"Creating subtitle file with text: {subtitle_text} and duration: {duration_seconds} seconds")
+            # Split subtitle text into multiple lines to prevent overflow
+            subtitle_lines = self._split_text_into_lines(subtitle_text, words_per_line=4)
+            formatted_subtitle = "\n".join(subtitle_lines)
+            
+            logger.info(f"Creating subtitle file with text split into {len(subtitle_lines)} lines: {formatted_subtitle}")
             with open(subtitle_file, 'w', encoding='utf-8') as f:
                 f.write("1\n")
                 end_time = self._format_time(duration_seconds)
                 f.write(f"00:00:00,000 --> {end_time}\n")
-                f.write(f"{subtitle_text.strip()}\n")
+                f.write(f"{formatted_subtitle}\n")
             logger.info(f"Subtitle file created successfully: {subtitle_file}")
         except Exception as e:
             logger.error(f"Error creating subtitle file: {str(e)}")
@@ -426,14 +449,15 @@ class MediaMergeService:
             # Create a temporary file for the video with hardcoded subtitles
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
-            # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
+            # Add subtitles to the video with properly configured style for multi-line support
             # Using Alignment=2 for top center positioning with smaller font size
+            # Setting LineSpacing parameter to control space between lines
             # Properly escape the subtitle path for Windows
             escaped_subtitle_path = subtitle_path.replace('\\', '/').replace(':', '\\:')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=30,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=25,LineSpacing=2,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -457,14 +481,36 @@ class MediaMergeService:
                 # If subtitles fail, try an alternative approach with drawtext filter
                 logger.warning("Subtitle embedding failed, trying alternative method")
                 
-                # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame with smaller font size
-                # Properly escape subtitle text for ffmpeg drawtext filter
-                escaped_text = subtitle_text.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
+                # Try with multiple drawtext filters for multi-line subtitles
+                # Position subtitles at the top center of the frame with proper spacing
+                # We can't use the full multi-line text with drawtext, so we'll extract lines
+                subtitle_lines = []
+                current_line_idx = 2  # SRT format has text starting from line 3 (index 2)
+                while current_line_idx < len(subtitle_content.split('\n')) and subtitle_content.split('\n')[current_line_idx].strip():
+                    subtitle_lines.append(subtitle_content.split('\n')[current_line_idx].strip())
+                    current_line_idx += 1
+                
+                if not subtitle_lines:
+                    subtitle_lines = ["[No subtitle text]"]
+                
+                # Create a complex filter for each line with proper vertical positioning
+                drawtext_filters = []
+                for i, line in enumerate(subtitle_lines):
+                    escaped_line = line.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
+                    # Calculate y position with 20px spacing between lines
+                    y_position = 10 + (i * 20)
+                    drawtext_filters.append(
+                        f"drawtext=text='{escaped_line}':fontcolor=white:fontsize=10:fontname=Arial:"
+                        f"box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y={y_position}"
+                    )
+                
+                # Join all filters with comma
+                filter_chain = ",".join(drawtext_filters) + ",scale=1920:1080"
+                
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=10:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y=10,scale=1920:1080",
+                    '-vf', filter_chain,
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
@@ -576,14 +622,15 @@ class MediaMergeService:
             # Create a temporary file for the video with hardcoded subtitles
             subtitle_video_path = f"{os.path.splitext(output_path)[0]}_subtitle_temp{os.path.splitext(output_path)[1]}"
             
-            # Add subtitles to the video and set resolution to 1920x1080 (standard HD)
+            # Add subtitles to the video with properly configured style for multi-line support
             # Using Alignment=2 for top center positioning with smaller font size
+            # Setting LineSpacing parameter to control space between lines
             # Properly escape the subtitle path for Windows
             escaped_subtitle_path = subtitle_path.replace('\\', '/').replace(':', '\\:')
             subtitle_cmd = [
                 self.ffmpeg_path,
                 '-i', video_path,
-                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=30,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
+                '-vf', f"subtitles='{escaped_subtitle_path}':force_style='FontSize=10,FontName=Arial,Alignment=2,BorderStyle=1,Outline=2,Shadow=0,MarginV=25,LineSpacing=2,PrimaryColour=&HFFFFFF,OutlineColour=&H000000',scale=1920:1080",
                 '-c:v', 'libx264',
                 '-preset', 'fast',
                 '-y',
@@ -607,14 +654,36 @@ class MediaMergeService:
                 # If subtitles fail, try an alternative approach with drawtext filter
                 logger.warning("Subtitle embedding failed, trying alternative method")
                 
-                # Try with drawtext filter instead and set resolution to 1920x1080 (standard HD)
-                # Position subtitles at the top center of the frame with smaller font size
-                # Properly escape subtitle text for ffmpeg drawtext filter
-                escaped_text = subtitle_text.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
+                # Try with multiple drawtext filters for multi-line subtitles
+                # Position subtitles at the top center of the frame with proper spacing
+                # We can't use the full multi-line text with drawtext, so we'll extract lines
+                subtitle_lines = []
+                current_line_idx = 2  # SRT format has text starting from line 3 (index 2)
+                while current_line_idx < len(subtitle_content.split('\n')) and subtitle_content.split('\n')[current_line_idx].strip():
+                    subtitle_lines.append(subtitle_content.split('\n')[current_line_idx].strip())
+                    current_line_idx += 1
+                
+                if not subtitle_lines:
+                    subtitle_lines = ["[No subtitle text]"]
+                
+                # Create a complex filter for each line with proper vertical positioning
+                drawtext_filters = []
+                for i, line in enumerate(subtitle_lines):
+                    escaped_line = line.replace('\\', '\\\\').replace("'", "\\'").replace('"', '\\"').replace(':', '\\:')
+                    # Calculate y position with 20px spacing between lines
+                    y_position = 10 + (i * 20)
+                    drawtext_filters.append(
+                        f"drawtext=text='{escaped_line}':fontcolor=white:fontsize=10:fontname=Arial:"
+                        f"box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y={y_position}"
+                    )
+                
+                # Join all filters with comma
+                filter_chain = ",".join(drawtext_filters) + ",scale=1920:1080"
+                
                 alt_subtitle_cmd = [
                     self.ffmpeg_path,
                     '-i', video_path,
-                    '-vf', f"drawtext=text='{escaped_text}':fontcolor=white:fontsize=10:fontname=Arial:box=1:boxcolor=black@0.5:boxborderw=3:x=(w-text_w)/2:y=10,scale=1920:1080",
+                    '-vf', filter_chain,
                     '-c:v', 'libx264',
                     '-preset', 'fast',
                     '-y',
